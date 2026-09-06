@@ -1,0 +1,77 @@
+services:
+  auth-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: authdb
+      POSTGRES_USER: antar_auth
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5433:5432"
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U antar_auth -d authdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [auth-test-network]
+
+  iot-simulator:
+    build:
+      context: ./devices
+    ports:
+      - "5050:5050"
+    volumes:
+      - ./devices:/app
+    networks: [auth-test-network]
+
+  auth-service:
+    build: .
+    ports:
+      - "8085:8085"
+    depends_on:
+      auth-db:
+        condition: service_healthy
+      iot-simulator:
+        condition: service_started
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://auth-db:5432/authdb
+      SPRING_DATASOURCE_USERNAME: antar_auth
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      JWT_SIGNING_SECRET: ${JWT_SIGNING_SECRET}
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID}
+      WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME}
+      WEBAUTHN_ORIGIN: ${WEBAUTHN_ORIGIN}
+      DEVICE_SIMULATOR_URL: http://iot-simulator:5050
+    networks: [auth-test-network]
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "5500:5500"
+    environment:
+      VITE_BACKEND_URL: http://auth-service:8085
+      VITE_SIMULATOR_URL: http://iot-simulator:5050
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - auth-service
+    networks: [auth-test-network]
+
+  db-admin:
+    image: adminer:latest
+    ports:
+      - "8080:8080"
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    networks: [auth-test-network]
+
+volumes:
+  auth-db-data:
+
+networks:
+  auth-test-network:
+    driver: bridge
