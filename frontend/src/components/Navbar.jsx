@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Cpu, Users, Sliders, LogOut } from 'lucide-react';
+import { Shield, Cpu, Users, Sliders, LogOut, KeyRound } from 'lucide-react';
 
 export default function Navbar({ activeTab, setActiveTab, session, onLogout, onOpenSecurity }) {
   const isAdmin = session?.role === 'ADMIN';

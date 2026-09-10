@@ -6,6 +6,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/webauthn/register")
 @RequiredArgsConstructor
@@ -18,9 +20,12 @@ public class RegistrationController {
         return webAuthnService.startRegistration(username);
     }
 
-    @PostMapping(value = "/finish", consumes = "application/json")
-    public ResponseEntity<Void> finish(@RequestParam String username, @RequestBody String credentialJson) throws Exception {
+    @PostMapping(value = "/finish", consumes = "application/json", produces = "application/json")
+    public ResponseEntity<Map<String, String>> finish(@RequestParam String username, @RequestBody String credentialJson) throws Exception {
         webAuthnService.finishRegistration(username, credentialJson);
-        return ResponseEntity.ok().build();
+        return ResponseEntity.ok(Map.of(
+            "status", "SUCCESS",
+            "message", "Biometric credential enrolled successfully"
+        ));
     }
 }

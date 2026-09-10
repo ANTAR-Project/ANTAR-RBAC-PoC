@@ -3,7 +3,6 @@ package com.antar.authservice.controller;
 import com.antar.authservice.model.User;
 import com.antar.authservice.service.TokenService;
 import com.antar.authservice.service.WebAuthnService;
-import com.yubico.webauthn.AssertionRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;

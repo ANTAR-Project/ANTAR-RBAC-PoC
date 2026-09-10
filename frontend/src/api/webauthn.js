@@ -37,7 +37,15 @@ export async function registerBiometrics(username) {
 
   // 2. Trigger platform biometric prompt (Touch ID / Face ID / Android Fingerprint)
   const publicKey = PublicKeyCredential.parseCreationOptionsFromJSON(optionsJson);
-  const credential = await navigator.credentials.create({ publicKey });
+  let credential;
+  try {
+    credential = await navigator.credentials.create({ publicKey });
+  } catch (err) {
+    if (err.name === 'InvalidStateError' || err.message?.includes('already registered')) {
+      throw new Error('This biometric sensor is already enrolled for this account! You can log in directly.');
+    }
+    throw err;
+  }
 
   // 3. Send signed assertion to backend to persist public key
   const resFinish = await fetch(`/webauthn/register/finish?username=${encodeURIComponent(username)}`, {
@@ -46,7 +54,13 @@ export async function registerBiometrics(username) {
     body: JSON.stringify(credential.toJSON())
   });
 
-  const finishData = await resFinish.json();
+  let finishData = {};
+  try {
+    finishData = await resFinish.json();
+  } catch {
+    // If response was empty or non-JSON
+  }
+
   if (!resFinish.ok) {
     throw new Error(finishData.message || finishData.error || 'Failed to verify biometric enrollment on server');
   }

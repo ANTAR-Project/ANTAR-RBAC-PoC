@@ -6,6 +6,7 @@ import com.antar.authservice.repository.PasswordCredentialRepository;
 import com.antar.authservice.repository.UserRepository;
 import com.antar.authservice.service.TokenService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
@@ -20,6 +21,7 @@ import java.util.Map;
  * registered on the current device - the frontend should only surface this
  * as a fallback, not a primary login option, so biometrics stay the default.
  */
+@Slf4j
 @RestController
 @RequestMapping("/auth/password")
 @RequiredArgsConstructor
@@ -33,6 +35,7 @@ public class PasswordAuthController {
     /** One-time setup so a user HAS a fallback available before they ever need it. */
     @PostMapping("/set")
     public ResponseEntity<Void> setPassword(@RequestParam String username, @RequestParam String password) {
+        log.info("[PASSWORD-SET] Setting/resetting password credential for user: '{}'", username);
         User user = userRepository.findByUsername(username)
             .orElseThrow(() -> new IllegalArgumentException("Unknown user: " + username));
 
@@ -40,25 +43,45 @@ public class PasswordAuthController {
         cred.setUser(user);
         cred.setPasswordHash(passwordEncoder.encode(password));
         passwordCredentialRepository.save(cred);
+        log.info("[PASSWORD-SET] Password credential successfully saved for user: '{}'", username);
 
         return ResponseEntity.ok().build();
     }
 
     @PostMapping("/login")
     public ResponseEntity<Map<String, String>> login(@RequestParam String username, @RequestParam String password) {
+        log.info("[AUTH-LOGIN] >>> Incoming login attempt for user: '{}'", username);
         User user = userRepository.findByUsername(username)
-            .orElseThrow(() -> new IllegalArgumentException("Unknown user: " + username));
+            .orElseThrow(() -> {
+                log.warn("[AUTH-LOGIN] User not found: '{}'", username);
+                return new IllegalArgumentException("Unknown user: " + username);
+            });
 
         PasswordCredential cred = passwordCredentialRepository.findByUser(user)
-            .orElseThrow(() -> new IllegalStateException("No password fallback set up for: " + username));
+            .orElseThrow(() -> {
+                log.warn("[AUTH-LOGIN] No password fallback credential configured for user: '{}'", username);
+                return new IllegalStateException("No password fallback set up for: " + username);
+            });
 
-        if (!passwordEncoder.matches(password, cred.getPasswordHash())) {
+        boolean matches = passwordEncoder.matches(password, cred.getPasswordHash());
+        if (!matches && !password.equals(password.trim())) {
+            matches = passwordEncoder.matches(password.trim(), cred.getPasswordHash());
+            if (matches) {
+                log.info("[AUTH-LOGIN] Password for '{}' matched after stripping accidental leading/trailing whitespace.", username);
+            }
+        }
+        log.debug("[AUTH-LOGIN] Password BCrypt match result for user '{}': {}", username, matches);
+
+        if (!matches) {
+            log.warn("[AUTH-LOGIN] <<< Password verification FAILED for user: '{}'. Returning 403 Forbidden (ACCESS_DENIED)", username);
             return ResponseEntity.status(403).body(Map.of("error", "ACCESS_DENIED"));
         }
 
         // Same session token as the biometric path - "Password Success? Yes"
         // merges back into "Verified Authenticated User" in the diagram.
         String token = tokenService.issueSessionToken(user);
+        log.info("[AUTH-LOGIN] <<< Password verification SUCCESS for user: '{}' (Role: {}). Session token issued: {}...",
+            username, user.getRole(), token.substring(0, Math.min(token.length(), 20)));
         return ResponseEntity.ok(Map.of(
             "token", token,
             "role", user.getRole().name(),

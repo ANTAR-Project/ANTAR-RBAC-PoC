@@ -11,30 +11,33 @@ export default function LoginView({ onLoginSuccess, onRequireSetup, showToast })
 
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
-    if (!username || !password) {
+    const cleanUser = username?.trim();
+    const cleanPass = password?.trim();
+
+    if (!cleanUser || !cleanPass) {
       showToast('Please enter both username and password.', 'error');
       return;
     }
 
     setLoading(true);
     try {
-      const data = await passwordLogin(username, password);
-      showToast(`Welcome back, ${username}!`, 'success');
+      const data = await passwordLogin(cleanUser, cleanPass);
+      showToast(`Welcome back, ${cleanUser}!`, 'success');
       
       const sessionData = {
-        username,
+        username: cleanUser,
         role: data.role,
         token: data.token
       };
 
       if (data.mustChangePassword === 'true' || data.mustChangePassword === true) {
-        onRequireSetup(sessionData, password);
+        onRequireSetup(sessionData, cleanPass);
       } else {
         onLoginSuccess(sessionData);
       }
     } catch (err) {
       const msg = err.message === 'ACCESS_DENIED' || err.data?.error === 'ACCESS_DENIED'
-        ? `Incorrect password for user "${username}". Please verify and try again.`
+        ? `Incorrect password for user "${cleanUser}". Please verify and try again.`
         : (err.message || 'Authentication failed. Please check credentials.');
       showToast(msg, 'error');
     } finally {
@@ -149,7 +152,17 @@ export default function LoginView({ onLoginSuccess, onRequireSetup, showToast })
         </button>
 
         <div style={{ marginTop: '20px', textAlign: 'center', fontSize: '11px', color: '#64748b' }}>
-          Initial Admin Passkey: <code style={{ color: '#a5b4fc' }}>welcome_to_AN|TAR.</code>
+          Initial Admin Passkey:{' '}
+          <code
+            style={{ color: '#a5b4fc', cursor: 'pointer', textDecoration: 'underline dotted' }}
+            title="Click to fill password"
+            onClick={() => {
+              setPassword('welcome_to_AN|TAR.');
+              showToast('Filled default passkey', 'info');
+            }}
+          >
+            welcome_to_AN|TAR.
+          </code>
         </div>
       </div>
     </div>

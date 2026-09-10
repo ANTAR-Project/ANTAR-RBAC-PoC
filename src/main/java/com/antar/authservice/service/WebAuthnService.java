@@ -1,5 +1,6 @@
 package com.antar.authservice.service;
 
+import com.antar.authservice.config.WebAuthnConfig;
 import com.antar.authservice.model.Credential;
 import com.antar.authservice.model.Role;
 import com.antar.authservice.model.User;
@@ -15,14 +16,13 @@ import org.springframework.stereotype.Service;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
 public class WebAuthnService {
 
-    private final RelyingParty relyingParty;
+    private final WebAuthnConfig webAuthnConfig;
     private final UserRepository userRepository;
     private final CredentialRepository credentialRepository;
 
@@ -44,7 +44,7 @@ public class WebAuthnService {
             .id(new ByteArray(user.getId().toString().getBytes(StandardCharsets.UTF_8)))
             .build();
 
-        PublicKeyCredentialCreationOptions options = relyingParty.startRegistration(
+        PublicKeyCredentialCreationOptions options = webAuthnConfig.getRelyingParty().startRegistration(
             StartRegistrationOptions.builder()
                 .user(identity)
                 .authenticatorSelection(AuthenticatorSelectionCriteria.builder()
@@ -71,7 +71,7 @@ public class WebAuthnService {
             throw new IllegalArgumentException("Malformed registration response JSON", e);
         }
 
-        RegistrationResult result = relyingParty.finishRegistration(
+        RegistrationResult result = webAuthnConfig.getRelyingParty().finishRegistration(
             FinishRegistrationOptions.builder()
                 .request(options)
                 .response(pkc)
@@ -91,7 +91,7 @@ public class WebAuthnService {
     // ---------- Login / step-up (both use the same assertion ceremony) ----------
 
     public AssertionRequest startAssertion(String username) {
-        AssertionRequest request = relyingParty.startAssertion(
+        AssertionRequest request = webAuthnConfig.getRelyingParty().startAssertion(
             StartAssertionOptions.builder()
                 .username(username)
                 .userVerification(UserVerificationRequirement.REQUIRED)
@@ -113,7 +113,7 @@ public class WebAuthnService {
             throw new IllegalArgumentException("Malformed assertion response JSON", e);
         }
 
-        AssertionResult result = relyingParty.finishAssertion(
+        AssertionResult result = webAuthnConfig.getRelyingParty().finishAssertion(
             FinishAssertionOptions.builder()
                 .request(request)
                 .response(pkc)

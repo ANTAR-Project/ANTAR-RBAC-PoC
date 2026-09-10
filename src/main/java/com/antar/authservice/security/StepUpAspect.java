@@ -33,7 +33,7 @@ public class StepUpAspect {
 
         Claims claims;
         try {
-            claims = tokenService.parse(assertionToken).getBody();
+            claims = tokenService.parse(assertionToken).getPayload();
         } catch (JwtException e) {
             // covers expired, malformed, and bad-signature tokens alike
             throw new StepUpRequiredException(requiresBiometric.action());
