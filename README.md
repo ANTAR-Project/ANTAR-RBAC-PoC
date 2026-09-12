@@ -187,52 +187,6 @@ The system includes a sandbox for file-level access control under `/files`:
 
 ---
 
-## Default Access Policy Matrix
-
-Configured in `access_policies` (seeded in Flyway migration `V4`):
-
-| Service Key | Action ($\alpha$) | Role ($r$) | Auth Requirement | Enforcement Details |
-| :--- | :--- | :--- | :--- | :--- |
-| `smart-bulb` | `POWER` | `USER` | `NO_AUTH` | Open edge access / ambient light switch |
-| `smart-bulb` | `POWER` | `GUEST` | `SESSION` | Must hold an active guest session token |
-| `smart-fan` | `SPEED` | `USER` | `SESSION` | Routine control via session token |
-| `smart-fan` | `SPEED` | `GUEST` | `SESSION` | Requires session + explicit service grant |
-| `smart-lock` | `UNLOCK` | `USER` | **`BIOMETRIC_STEP_UP`** | Hardware biometric touch mandatory |
-| `smart-lock` | `UNLOCK` | `ADMIN` | **`BIOMETRIC_STEP_UP`** | Hardware biometric touch mandatory |
-| `nas-storage` | `DELETE` | `USER` | **`BIOMETRIC_STEP_UP`** | Destructive deletion requires step-up |
-| `nas-storage` | `DELETE` | `ADMIN` | **`BIOMETRIC_STEP_UP`** | Destructive deletion requires step-up |
-
----
-
-## API Summary
-
-| Category | Method | Endpoint | Auth | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| **WebAuthn** | `POST` | `/webauthn/register/start?username={u}` | None | Generates enrollment options & challenge |
-| | `POST` | `/webauthn/register/finish?username={u}` | None | Verifies attestation; stores COSE public key |
-| | `POST` | `/webauthn/login/start?username={u}` | None | Generates assertion challenge |
-| | `POST` | `/webauthn/login/finish?username={u}` | None | Validates assertion & counter; returns $T_{\text{session}}$ |
-| | `POST` | `/webauthn/stepup/start?username={u}` | Bearer | Initiates biometric challenge for sensitive action |
-| | `POST` | `/webauthn/stepup/finish?username={u}&action={a}&resourceId={r}` | Bearer | Issues 60s action-bound $T_{\text{stepup}}$ |
-| **Password** | `POST` | `/auth/password/login` | None | Fallback login if biometrics are unavailable |
-| | `POST` | `/auth/password/set` | Bearer (Admin) | Sets or resets secondary password |
-| | `POST` | `/auth/password/change` | Bearer | Updates initial or temporary password |
-| **Users** | `GET` | `/api/users` | Bearer (Admin) | Lists users, roles, and credential status |
-| | `POST` | `/api/users` | Bearer (Admin) | Creates user with default password |
-| | `DELETE`| `/api/users/{username}` | Bearer (Admin) | Cascading delete of user and credentials |
-| **Services** | `GET` | `/api/services` | Bearer | Microservices catalog |
-| | `POST` | `/api/services/permissions/grant` | Bearer (Admin) | Grants explicit service permissions |
-| | `GET` | `/api/services/policies` | Bearer | Lists active access policy presets |
-| | `POST` | `/api/services/policies` | Bearer (Admin) | Updates policy requirement level |
-| | `POST` | `/api/services/device-control` | Bearer / Step-Up | Relays control action to edge devices |
-| **Files** | `GET` | `/files/access-check` | Bearer | Validates resource streaming permission |
-| | `DELETE`| `/files/delete` | Step-Up Header | Biometric-gated file deletion |
-| **Devices** | `GET` | `http://localhost:5050/api/devices` | None | Live device telemetry & status |
-| | `POST` | `http://localhost:5050/api/devices/{id}/control` | None | Direct hardware actuation endpoint |
-| | `GET` | `http://localhost:5050/api/events` | None | Live event log buffer of physical actions |
-
----
-
 ## Security Invariants
 
 1. **Hardware Non-Repudiation:** Cryptographic assertions are generated strictly within platform authenticators upon local biometric verification ($UV=1$).
