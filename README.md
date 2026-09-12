@@ -1,6 +1,6 @@
 # ANTAR Auth — WebAuthn Biometric Auth, RBAC & Cyber-Physical Actuation
 
-Standalone zero-trust authentication and cyber-physical actuation microservice framework. Built for edge computing and IoT environments to test fingerprint/Face ID/Windows Hello (**FIDO2/WebAuthn**) login, fine-grained role-based access control (**RBAC/ABAC**), and mandatory **biometric step-up verification** for safety-critical actions before integrating into the wider ANTAR stack.
+Standalone zero-trust authentication and cyber-physical actuation microservice framework. Built for edge computing and IoT environments to test fingerprint/Face ID/Windows Hello (**FIDO2/WebAuthn**) login, fine-grained role-based access control (**RBAC/ABAC**), and mandatory **biometric step-up verification** for safety-critical physical actions before integrating into the wider ANTAR stack.
 
 ---
 
@@ -8,8 +8,8 @@ Standalone zero-trust authentication and cyber-physical actuation microservice f
 
 - **`auth-service` (Port 8085):** Spring Boot 3 / Java 21 identity gateway, FIDO2 Relying Party (RP), and Policy Enforcement Point (PEP).
 - **`auth-db` (Port 5433 host / 5432 internal):** PostgreSQL 16 storing user credentials, monotonic signature counters, dynamic policies, and service permissions (managed via Flyway migrations `V1`–`V4`).
-- **`frontend` (Port 5500):** Modern React 18 + Vite single-page dashboard for passkey registration, biometric login, user management, and live IoT device control.
-- **`iot-simulator` (Port 5050):** Python 3 cyber-physical hardware emulator with real-time telemetry and closed-loop feedback for smart devices.
+- **`frontend` (Port 5500):** Modern React 18 + Vite single-page dashboard for passkey registration, biometric login, user management, and live element actuation.
+- **`device-service` (Port 5050):** Edge element controller managing real-time hardware telemetry and closed-loop actuation across physical appliances.
 - **`db-admin` (Port 8080):** Adminer web GUI for database inspection and direct state management.
 
 ---
@@ -18,7 +18,7 @@ Standalone zero-trust authentication and cyber-physical actuation microservice f
 
 A core architectural challenge in distributed edge and IoT systems is session design: *Should authentication be stateless (for speed and horizontal scaling) or stateful (for instant revocation and tamper-proof auditing)?* 
 
-ANTAR-Auth solves this by implementing a **hybrid division of labor**: edge request evaluation is completely **stateless**, while cryptographic identity verification and hardware clone detection remain strictly **stateful**.
+ANTAR-Auth implements a **hybrid division of labor**: edge request evaluation is completely **stateless**, while cryptographic identity verification and hardware clone detection remain strictly **stateful**.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
@@ -34,7 +34,7 @@ ANTAR-Auth solves this by implementing a **hybrid division of labor**: edge requ
 ```
 
 ### 1. What is Stateless in This Project?
-- **Self-Contained Session Tokens ($T_{\text{session}}$):** Upon successful login, the gateway signs an HMAC-SHA256 JWT containing `sub` (User ID), `username`, `role` (`ADMIN`, `USER`, `GUEST`), and a 4-hour expiration. Downstream microservices (e.g. `streaming-svc`, `nas-orchestrator`) can validate incoming Bearer tokens locally in CPU memory without hitting a centralized database or Redis session store.
+- **Self-Contained Session Tokens ($T_{\text{session}}$):** Upon successful login, the gateway signs an HMAC-SHA256 JWT containing `sub` (User ID), `username`, `role` (`ADMIN`, `USER`, `GUEST`), and a 4-hour expiration. Downstream microservices (e.g. `streaming-svc`, `nas-orchestrator`, or edge device relays) validate incoming Bearer tokens locally in CPU memory without hitting a centralized database or Redis session store.
 - **Ephemeral Step-Up Tokens ($T_{\text{stepup}}$):** Minted exclusively after completing a fresh biometric prompt for high-risk operations. The token is cryptographically bound to the target action and resource (e.g. `action="UNLOCK"`, `resourceId="smart-lock"`) and has an ultra-short **60-second TTL**.
 - **AOP Security Interception (`@RequiresBiometric`):** Controllers declare sensitive endpoints with `@RequiresBiometric(action = "...")`. The Spring AOP interceptor validates the incoming `X-Step-Up-Assertion` header entirely in-memory: verifying signature, TTL, and action binding.
 - **Stateless Spring Security:** Configured with `SessionCreationPolicy.STATELESS`—no HTTP sessions, cookies, or `JSESSIONID` exist on the server.
@@ -45,7 +45,7 @@ ANTAR-Auth solves this by implementing a **hybrid division of labor**: edge requ
   If a cloned authenticator or replay attempt sends $c_{\text{rx}} \le c_{\text{db}}$, the gateway instantly rejects the request and permanently revokes the credential in the database.
 - **CSPRNG Challenge-Response Windows:** FIDO2 ceremonies require server-generated 256-bit cryptographic nonces with a 120-second lifespan to prevent man-in-the-middle replay attacks.
 - **Persistent Access Policies & Identity Matrix:** PostgreSQL persists user accounts, BCrypt password fallbacks, service registries (`microservices`), explicit user permissions (`service_permissions`), preset auth requirements (`access_policies`), and resource ownership (`resource_ownership`).
-- **Physical Hardware State:** The IoT simulator maintains continuous hardware registers for appliance power, fan speeds, motor RPM, and deadbolt solenoid positions.
+- **Physical Hardware State:** Appliance power registers, fan speeds, motor RPM tachometers, and deadbolt solenoid states are tracked continuously by the device controller.
 
 ### Comparison Summary
 
@@ -84,29 +84,32 @@ flowchart TB
         ADMINER -.->|"Manage DB"| DB
     end
 
-    subgraph Edge["Cyber-Physical Edge Tier"]
-        SIM["IoT Device Simulator (Port 5050)"]
-        BULB["Smart Bulb (Lux / PWM)"]
+    subgraph Edge["Cyber-Physical Edge Elements"]
+        DEV["Edge Device Controller (Port 5050)"]
+        BULB["Smart Bulb (Lux / PWM Dimmer)"]
         FAN["Smart Fan (BLDC Motor / RPM)"]
-        LOCK["Smart Lock (Solenoid Deadbolt)"]
-        SIM --- BULB
-        SIM --- FAN
-        SIM --- LOCK
+        LOCK["Smart Lock (Motorized Deadbolt)"]
+        NAS["Storage Cluster (Destructive Ops)"]
+        DEV --- BULB
+        DEV --- FAN
+        DEV --- LOCK
+        DEV --- NAS
     end
 
     UI -->|"Bearer JWT / TLS"| GW
-    GW -->|"Actuation Relay"| SIM
+    GW -->|"Actuation Relay"| DEV
 ```
 
 ---
 
-## Edge IoT Actuators & Telemetry Dynamics
+## Edge Elements & Cyber-Physical Actuation
 
-The Python hardware emulator (`devices/simulator.py`) simulates realistic cyber-physical devices with closed-loop feedback:
+The framework orchestrates multiple heterogeneous cyber-physical elements:
 
-1. **Photometric Lighting Node (`smart-bulb`):** Simulates ambient lux tracking across diurnal cycles ($L_{\text{ambient}}(t) = 475 + 260\sin(\omega t) + \xi(t)$), an optical slew-rate limiter ($\le 2\%$ brightness shift per tick), and dynamic power consumption ($2.0\text{W} - 10.0\text{W}$).
-2. **Climate Ventilation Node (`smart-fan`):** 5-speed BLDC motor rotor with tachometer feedback ($400\text{--}2000\text{ RPM}$) and continuous $90^\circ$ bidirectional oscillation.
-3. **Perimeter Security Barrier (`smart-lock`):** High-security motorized deadbolt governed by a 12V solenoid motor with battery voltage monitoring. Transitions from $\text{ARMED} \to \text{UNLOCKED}$ strictly upon valid biometric step-up.
+1. **Photometric Lighting Node (`smart-bulb`):** Dynamic ambient lux tracking, brightness slew-rate control ($\le 2\%$ step change per execution interval to prevent sudden flicker), and power consumption monitoring ($2.0\text{W} - 10.0\text{W}$).
+2. **Climate Ventilation Node (`smart-fan`):** 5-speed BLDC motor rotor with tachometer feedback ($400\text{--}2000\text{ RPM}$) and synchronized $90^\circ$ bidirectional oscillation.
+3. **Perimeter Security Barrier (`smart-lock`):** High-security motorized deadbolt actuated via a 12V solenoid motor with optical interlocks and reserve battery telemetry. Transitions from $\text{ARMED} \to \text{UNLOCKED}$ strictly upon valid biometric step-up.
+4. **Storage & Media Cluster (`nas-storage`):** Storage cluster volume access and destructive file operations requiring ownership validation and step-up authentication.
 
 ---
 
@@ -140,7 +143,7 @@ docker compose up --build
 Access the services:
 - **Web Console:** `http://localhost:5500`
 - **Identity API:** `http://localhost:8085`
-- **IoT Simulator API & Logs:** `http://localhost:5050`
+- **Device Controller API:** `http://localhost:5050`
 - **Database GUI (Adminer):** `http://localhost:8080` (System: PostgreSQL, Server: `auth-db`, User: `antar_auth`, DB: `authdb`)
 
 ---
@@ -221,11 +224,11 @@ Configured in `access_policies` (seeded in Flyway migration `V4`):
 | | `POST` | `/api/services/permissions/grant` | Bearer (Admin) | Grants explicit service permissions |
 | | `GET` | `/api/services/policies` | Bearer | Lists active access policy presets |
 | | `POST` | `/api/services/policies` | Bearer (Admin) | Updates policy requirement level |
-| | `POST` | `/api/services/device-control` | Bearer / Step-Up | Relays control action to IoT devices |
+| | `POST` | `/api/services/device-control` | Bearer / Step-Up | Relays control action to edge devices |
 | **Files** | `GET` | `/files/access-check` | Bearer | Validates resource streaming permission |
 | | `DELETE`| `/files/delete` | Step-Up Header | Biometric-gated file deletion |
-| **Simulator**| `GET` | `http://localhost:5050/api/devices` | None | Live telemetry from IoT simulator |
-| | `POST` | `http://localhost:5050/api/devices/{id}/control` | None | Direct device actuation endpoint |
+| **Devices** | `GET` | `http://localhost:5050/api/devices` | None | Live device telemetry & status |
+| | `POST` | `http://localhost:5050/api/devices/{id}/control` | None | Direct hardware actuation endpoint |
 | | `GET` | `http://localhost:5050/api/events` | None | Live event log buffer of physical actions |
 
 ---
